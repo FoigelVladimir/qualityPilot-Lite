@@ -1,0 +1,11 @@
+# All relative paths are resolved from this file's parent directory.
+data_root: ../data/mvtec_ad
+category: bottle
+output_dir: ../reports/runs/bottle-baseline
+model_path: ../artifacts/bottle-baseline.joblib
+image_size: 128
+calibration_fraction: 0.2
+seed: 42
+n_estimators: 200
+accept_quantile: 0.95
+reject_quantile: 0.99

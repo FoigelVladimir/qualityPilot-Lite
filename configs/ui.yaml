@@ -1,0 +1,4 @@
+# Paths are relative to the project root. No automatic training or downloading.
+baseline_config: configs/bottle.yaml
+runs_root: reports/runs
+selected_run: bottle-patchcore-20261021T103450Z-5eddf169

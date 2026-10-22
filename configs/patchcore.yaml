@@ -1,0 +1,18 @@
+baseline_config: bottle.yaml
+reference_run: ../reports/runs/bottle-baseline
+output_root: ../reports/runs
+category: bottle
+backbone: resnet18
+layers: [layer2, layer3]
+pre_trained: true
+image_size: 224
+coreset_sampling_ratio: 0.01
+num_neighbors: 9
+train_batch_size: 4
+device: auto
+seed: 42
+accept_quantile: 0.95
+reject_quantile: 0.99
+pixel_quantile: 0.99
+warmup_images: 3
+cpu_threads: 4
