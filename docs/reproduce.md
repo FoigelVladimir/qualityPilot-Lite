@@ -1,57 +1,184 @@
-# Воспроизведение от исходников до COMPLETE run
+# Установка и воспроизведение QualityPilot Lite
 
-Основной проверенный маршрут PowerShell находится в [README](../README.md).
-Нужны исходники, tests, configs, app.py, .streamlit, pyproject.toml и uv.lock;
-checkout одного LICENSE недостаточен. Локальные evidence, данные и веса не нужны
-для установки или синтетических тестов; для полного pipeline они создаются явно.
-Используйте Python 3.11 и uv 0.9.5, `uv sync --locked`, без обновления lock.
+Полный маршрут от чистого checkout до COMPLETE run. [Краткий обзор проекта](../README.md).
 
-## Чистая установка
+## Установка и запуск
 
-1. Откройте новую копию всех будущих Git-файлов, без data/artifacts/reports/runs/.venv.
-2. Выполните `uv sync --locked --python 3.11 --extra dev --extra ui`.
-3. Запустите `uv run --no-sync pytest -q` и приложение из README. Без ML extra
-   ML-тесты явно пропускаются; About и сообщения об отсутствии артефактов работают.
-   Для проверки только UI: `uv run --no-sync pytest tests/test_ui_data.py tests/test_ui_app.py -q`;
-   здесь пропусков быть не должно.
-4. Для полного pipeline добавьте `--extra ml`, сохранив `dev,ui`.
-   `uv run --no-sync python -c "import torch; print(torch.__version__, torch.cuda.is_available())"`
-   проверит фактическую доступность CUDA; CPU также поддерживается.
+Проверенная платформа — **Windows, PowerShell, Python 3.11.14, uv 0.9.5**.
+Получите Git checkout со всеми исходниками и `uv.lock`:
 
-В Sprint 4 использованы две отдельные временные среды с переменной
-`UV_PROJECT_ENVIRONMENT`, указывающей на каждую из них, и одной чистой копией
-исходников. Это изолирует проверку от основного .venv. В обычном checkout uv
-создаёт `.venv`, переменная не нужна. Python/uv и wheel-cache могут уже существовать;
-установка пакетов из кэша не означает наличие готовой модели проекта.
+```powershell
+git clone https://github.com/FoigelVladimir/qualityPilot-Lite.git
+Set-Location qualityPilot-Lite
+```
 
-## Данные, обучение, калибровка, оценка
+Установка uv, если его ещё нет:
 
-Последовательно выполните команды раздела README: `download-mirror` **либо**
-`import-data`, `prepare`, `baseline`, `patchcore`. Mirror — явный сторонний источник,
-не автоматический fallback. Фиксированный commit и хеши записываются в provenance.
-Первый запуск PatchCore получает ImageNet-веса; доступ к сети и свободное место
-для wheel/cache необходимы. UI ничего не скачивает и не обучает.
+```powershell
+py -m pip install uv==0.9.5
+```
 
-При стандартных конфигах baseline создаёт `reports/runs/bottle-baseline/` и
-`artifacts/bottle-baseline.joblib`. PatchCore проверяет этот manifest и сохранённый
-baseline, строит memory bank только из normal train, калибрует image/pixel thresholds
-на normal calibration, сохраняет model.pt и проверяет reload **до** первого test.
-Далее оценивает обе модели на одинаковых 83 test paths/labels, сохраняет comparison,
-confusion matrices и иллюстрации. COMPLETE означает завершение всего этого pipeline;
-FAILED сохраняет диагностику и не предлагается в UI.
+Из корня проекта установите лёгкий вариант без Torch:
 
-Результат PatchCore: `reports/runs/bottle-patchcore-<UTC>-<id>/`:
+```powershell
+uv python install 3.11
+uv sync --locked --python 3.11 --extra dev --extra ui
+uv run --no-sync python -m streamlit run app.py
+```
 
-- status/config/environment/experiment, manifest, dataset_summary;
-- calibration.csv, model.pt, model_checksum.json, reload_check.json;
-- baseline/ и patchcore/: results.csv, metrics.json и confusion_matrix.png;
-- comparison.json/md; examples/ с иллюстрациями только реально существующих случаев.
+Откройте [http://127.0.0.1:8501](http://127.0.0.1:8501). Без данных и моделей
+доступны «О проекте», upload-форма и объяснения отсутствующих артефактов.
+Таблица появится после создания COMPLETE run, inference — после подготовки весов.
+Фиктивные метрики и изображения не подставляются. Для остановки — Ctrl+C.
+После редактирования исходников сервер нужно перезапустить.
 
-Скопируйте имя созданной папки из вывода CLI. В боковой панели Streamlit выберите
-именно этот COMPLETE run. UI baseline_config должен соответствовать baseline,
-использованному этим экспериментом; текущий стандарт — configs/bottle.yaml.
-При отсутствии весов saved reports доступны; без данных недоступен preview,
-но таблицы сохраняются. Повреждённые файлы дают сообщение с файлом/полем без traceback.
+На странице «Проверка изображения» выберите «Пример из датасета» или «Загрузить
+фотографию» и нажмите **«Проверить изображение»** под превью. Тип примера показан
+по-русски, имя фотографии сокращено. Модель, устройство и сохранённый эксперимент
+находятся в боковом блоке **«Настройки проверки»**; по умолчанию — PatchCore и
+автоматический выбор устройства. Читаемая подпись эксперимента содержит дату UTC
+и уникальное окончание. Фактическое устройство показано после проверки.
+
+Рекомендация содержит текст, значок и вторичный код ACCEPT/REVIEW/REJECT.
+«Рекомендуется принять» не гарантирует отсутствие дефекта. Оценка показывается
+с двумя знаками после запятой и **не является вероятностью дефекта**; точное
+значение, сохранённые пороги, время и пути доступны в «Технических подробностях».
+«Экспериментальные пороги» по умолчанию выключены, действуют временно и имеют сброс.
+
+У PatchCore слева оригинал, справа выбранный режим; начальный — «Наложение».
+Прозрачность меняет только отображение. «Крупный просмотр» раскрывает выбранное
+изображение на всю ширину; доступен и штатный Fullscreen. «Сравнить с разметкой
+дефекта» появляется только у локального примера с известной маской. У загрузки
+разметка неизвестна; принимаются JPG/PNG до 10 МиБ и 20 млн пикселей, в памяти.
+Базовая модель (Isolation Forest) оценивает снимок целиком и не выделяет области.
+Контур использует прежнюю маску; отображение не улучшает качество локализации.
+
+На странице «Результаты эксперимента» метрики, матрицы ошибок и предсказания
+подписаны по-русски; определения Precision/Recall/FPR раскрываются отдельно.
+Прикладной текст переведён, стандартные кнопки Streamlit (например, Browse files,
+Fullscreen и меню таблицы) могут оставаться английскими. [Демонстрация](demo.md).
+
+Для полного проекта, включая PatchCore на CPU или CUDA:
+
+```powershell
+uv sync --locked --python 3.11 --extra dev --extra ml --extra ui
+```
+
+`uv run --no-sync` использует уже установленный состав extras. Обычный `uv sync`
+без `--extra ml` может удалить ML-пакеты. В lock выбран PyTorch 2.8.0+cu128;
+эта сборка поддерживает CPU, для CUDA нужен совместимый NVIDIA-драйвер.
+Установка достаточно объёмная. [Версии и зависимости](dependencies.md).
+Полный pipeline с CUDA проверен на Windows. Baseline и UI проверяются отдельно
+на Ubuntu/Windows в [GitHub Actions](https://github.com/FoigelVladimir/qualityPilot-Lite/actions/workflows/checks.yml);
+текущий статус main показывает badge выше. CI не подтверждает CUDA и обучение
+PatchCore; Linux-обучение полного pipeline локально не проверялось.
+
+## Данные и воспроизведение эксперимента
+
+Команды ниже рассчитаны на свежую копию без моделей и run-артефактов. Интернет
+нужен для установки, явного получения данных и первых ImageNet-весов.
+Сохранённый checkpoint содержит backbone и memory bank и работает offline.
+
+Данные MVTec AD: **CC BY-NC-SA 4.0**, некоммерческое использование; © MVTec
+Software GmbH, Bergmann et al. Предпочтительный источник —
+[официальная страница](https://www.mvtec.com/research-teaching/datasets/mvtec-ad).
+Для измерений использована явно выбранная сторонняя копия
+[foersben/mvtec-ad](https://huggingface.co/datasets/foersben/mvtec-ad), commit
+`c75b39616f84db43677bcc8228caaafaf5096d7f`. Хеши проверяют целостность копии;
+идентичность официальному архиву независимо не подтверждена.
+[Получение данных, лицензия и историческая проблема ссылки](data.md).
+
+В PowerShell, после установки `dev/ml/ui`:
+
+```powershell
+# Явное согласие использовать закреплённую стороннюю копию, только bottle.
+uv run --no-sync qualitypilot --config configs/bottle.yaml download-mirror
+uv run --no-sync qualitypilot --config configs/bottle.yaml prepare
+uv run --no-sync qualitypilot --config configs/bottle.yaml baseline
+uv run --no-sync qualitypilot --config configs/patchcore.yaml patchcore
+uv run --no-sync python -m streamlit run app.py
+```
+
+Вместо `download-mirror` можно импортировать полученный официальный архив:
+`uv run --no-sync qualitypilot --config configs/bottle.yaml import-data .\bottle.tar.xz`.
+Повторять оба способа для одной категории не нужно. `prepare` проверяет структуру,
+RGB-дубликаты и маски, сохраняет manifest. `baseline` создаёт
+`artifacts/bottle-baseline.joblib` и `reports/runs/bottle-baseline/`.
+`patchcore` читает **этот новый baseline** через `baseline_config` и `reference_run`
+в `configs/patchcore.yaml`, затем создаёт уникальный
+`reports/runs/bottle-patchcore-<UTC>-<id>/` со статусом COMPLETE.
+
+В боковой панели UI выберите **полученный COMPLETE run**, сверив имя с выводом CLI.
+`configs/ui.yaml` задаёт начальный выбор; если такого имени нет, UI выбирает первый
+доступный run. При нескольких запусках выберите нужный вручную. Для local-примеров
+UI использует `baseline_config`; при другом конфиге baseline обновите и этот путь.
+
+Существующие baseline-веса и результаты защищены от перезаписи. Для повторного
+эксперимента нужны новые `output_dir`/`model_path`, а PatchCore должен ссылаться
+на соответствующие новые baseline config и reference-run. Пути YAML разрешаются
+от папки YAML; пути UI — от корня проекта. Раздел «Повтор, сохранность и сравнение» ниже описывает новые пути.
+Демонстрация на 3–5 минут: [docs/demo.md](demo.md).
+
+## Архитектура и Python API
+
+```mermaid
+flowchart LR
+    D[Явный импорт bottle] --> P[Валидация и manifest]
+    P --> T[167 normal train]
+    P --> C[42 normal calibration]
+    P --> E[83 official test]
+    T --> B[60 признаков и Isolation Forest]
+    T --> M[ImageNet ResNet18 и PatchCore memory bank]
+    B --> K[Нормальная калибровка и сохранение]
+    M --> K
+    C --> K
+    K --> I[Inspector: score, решение, карта]
+    E --> I
+    I --> R[Метрики, CSV, визуализации]
+    I --> U[Streamlit inspection]
+    R --> V[Streamlit saved reports]
+```
+
+Baseline: resize 128×128, 60 глобальных цветовых/текстурных признаков,
+Isolation Forest, 200 деревьев. PatchCore: frozen ImageNet ResNet18, layer2/layer3,
+224×224, train batch 4, coreset 1%, 9 соседей. Anomalib выполняет алгоритм PatchCore;
+обучение backbone с нуля не реализовано. Обе модели используют один manifest/seed 42.
+
+Normal-only calibration: эмпирические квантили image scores 0.95/0.99, `higher`.
+`score <= accept` → ACCEPT; `accept < score <= reject` → REVIEW;
+`score > reject` → REJECT. Pixel threshold — 0.99-квантиль максимумов normal maps.
+Test labels/masks в подборе порогов не участвуют. Квантиль не гарантирует будущие FPR/recall.
+
+```python
+from pathlib import Path
+from qualitypilot.inference.service import Inspector
+
+# Подставьте путь к собственному доверенному артефакту из вывода CLI.
+inspector = Inspector.load(Path("artifacts/bottle-baseline.joblib"), device="cpu")
+result = inspector.predict(Path("data/mvtec_ad/bottle/test/broken_large/000.png"))
+print(result.to_dict())
+# Для PatchCore передайте model.pt; result.anomaly_map — float32 H×W.
+# У baseline карта None. По умолчанию геометрия соответствует исходнику.
+```
+
+```text
+app.py, .streamlit/          локальное приложение и настройки сервера
+configs/                    baseline, PatchCore/reference-run и UI
+src/qualitypilot/data/      импорт, mirror, структура и split
+src/qualitypilot/models/    baseline и адаптер Anomalib
+src/qualitypilot/decision/  калибровка и ACCEPT/REVIEW/REJECT
+src/qualitypilot/inference/ Inspector, preprocessing, Prediction
+src/qualitypilot/evaluation/ image/pixel metrics и matched benchmark
+src/qualitypilot/experiments.py  полный PatchCore experiment
+src/qualitypilot/visualization/  экспорт карт и примеров
+src/qualitypilot/ui/        чтение артефактов, состояние и представление
+tests/                     синтетические тесты, AppTest и opt-in smoke
+docs/, reports/            инструкции и текстовые результаты
+uv.lock                    закреплённые зависимости и extras
+```
+
+[Краткие ответы для собеседования](interview.md).
+[Формулировка проекта для резюме](resume.md).
 
 ## Повтор, сохранность и сравнение
 
@@ -84,15 +211,33 @@ Test уже известен: повтор проверяет воспроизв
 их; не подбирайте параметры. Если доступны только inference и reload, нельзя
 объявлять подтверждённым обучение memory bank с нуля.
 
-## Offline и проверки
+## Тесты и offline inference
 
-После подготовки используйте свой `model.pt` через Inspector или CLI `inspect --model`.
-В README есть opt-in smoke с `HF_HUB_OFFLINE=1`. Не удаляйте model.pt: он содержит
-все backbone weights и memory bank. Установка зависимостей не становится offline
-автоматически; этот режим относится к inference уже сохранённой модели.
+```powershell
+uv run --no-sync pytest -q
+uv run --no-sync ruff check .
+uv run --no-sync ruff format --check .
+uv lock --check
+uv pip check
+uv run --no-sync qualitypilot --help
+```
 
-Проверки перед ревью: pytest, отдельный offline smoke, UI без ML, Ruff, lock/dependency
-check, CLI и браузерные normal/defective/upload/corrupt/temporary-threshold/saved-report
-сценарии. CI baseline/UI использует синтетические данные и не получает pretrained-веса.
-Remote Actions и Linux требуют отдельного фактического запуска, локальный PASS
-Windows их не заменяет. [Фактический отчёт Sprint 4](../reports/sprint4_report.md).
+Тесты и CI baseline/UI используют синтетические данные, без загрузки датасета
+или pretrained-весов. UI job требует Streamlit и ноль пропусков UI-тестов.
+Реальный integration smoke opt-in; без переменных окружения он явно пропущен:
+
+```powershell
+$run = Get-ChildItem reports/runs -Directory -Filter 'bottle-patchcore-*' |
+    Where-Object { (Test-Path (Join-Path $_.FullName 'status.json')) -and
+        ((Get-Content (Join-Path $_.FullName 'status.json') -Raw | ConvertFrom-Json).status -eq 'COMPLETE') } |
+    Sort-Object Name | Select-Object -Last 1
+$env:QUALITYPILOT_SMOKE_MODEL = Join-Path $run.FullName 'model.pt'
+$env:QUALITYPILOT_SMOKE_IMAGE = (Resolve-Path data/mvtec_ad/bottle/test/broken_large/000.png).Path
+$env:HF_HUB_OFFLINE = '1'
+uv run --no-sync pytest tests/test_patchcore.py::test_real_patchcore_smoke -q
+```
+
+Сохранённый model.pt содержит backbone и memory bank. Offline относится к inference
+уже подготовленной модели, а не к установке зависимостей. CI использует синтетические
+данные и не подтверждает обучение PatchCore или CUDA. Полный pipeline с CUDA проверен
+на Windows; Linux-обучение отдельно не подтверждено.

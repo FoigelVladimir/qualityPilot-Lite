@@ -87,7 +87,4 @@ def prediction_table(frame: pd.DataFrame) -> pd.DataFrame:
     for key in ("label", "binary_prediction"):
         display[key] = display[key].map({0: "Исправно", 1: "Дефект"})
     display["decision"] = display["decision"].map(decision_name)
-    for key in ("score", "latency_ms", "preprocessing_ms", "inference_ms", "postprocessing_ms"):
-        if key in display:
-            display[key] = display[key].map(lambda value: f"{value:.2f}".replace(".", ","))
     return display.rename(columns=names)

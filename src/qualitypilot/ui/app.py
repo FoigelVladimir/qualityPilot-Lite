@@ -497,7 +497,22 @@ def results_page(run: Path, settings: Settings) -> None:
             "Фиктивные примеры не создаются."
         )
         return
-    st.dataframe(prediction_table(rows), hide_index=True, width="stretch", row_height=38)
+    st.dataframe(
+        prediction_table(rows),
+        hide_index=True,
+        width="stretch",
+        row_height=38,
+        column_config={
+            name: st.column_config.NumberColumn(format="%.2f")
+            for name in (
+                "Оценка аномальности",
+                "Обработка, мс",
+                "Подготовка, мс",
+                "Модель, мс",
+                "Решение, мс",
+            )
+        },
+    )
     relative = st.selectbox(
         "Фотография для просмотра",
         rows["path"].tolist(),

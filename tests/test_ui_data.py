@@ -1,6 +1,7 @@
 import shutil
 from dataclasses import asdict
 from io import BytesIO
+from math import ceil
 
 import numpy as np
 import pytest
@@ -141,9 +142,72 @@ def test_contour_is_boundary_of_unchanged_mask(kind):
     np.testing.assert_array_equal(views["boundary"], expected)
     np.testing.assert_array_equal(views["mask"], mask.astype(np.uint8) * 255)
     np.testing.assert_array_equal(values, original)
-    np.testing.assert_array_equal(views["contour"][~expected], np.asarray(image)[~expected])
+    # Independently define a clipped square neighbourhood around the exact boundary.
+    outer = np.zeros_like(mask)
+    inner = np.zeros_like(mask)
+    for y, x in np.argwhere(expected):
+        outer[max(0, y - 2) : y + 3, max(0, x - 2) : x + 3] = True
+        inner[max(0, y - 1) : y + 2, max(0, x - 1) : x + 2] = True
+    np.testing.assert_array_equal(views["contour"][~outer], np.asarray(image)[~outer])
+    assert np.all(views["contour"][outer & ~inner] == (23, 44, 60))
+    assert np.all(views["contour"][inner] == (255, 210, 0))
     assert np.all(views["contour"][expected] == (255, 210, 0))
     assert views["contour"].shape == (5, 6, 3) and views["maximum"] == 0.75
+
+
+@pytest.mark.parametrize("size", [240, 900])
+@pytest.mark.parametrize("background", [(0, 0, 0), (255, 255, 255)])
+def test_contour_has_two_tone_scaled_stroke(size, background):
+    image = Image.new("RGB", (size, size), background)
+    values = np.zeros((size, size), dtype=np.float32)
+    lo, hi = size // 3, 2 * size // 3
+    values[lo:hi, lo:hi] = 1
+    before = values.copy()
+    views = map_views(image, values, 0.5, 0.45)
+    y = size // 2
+    outer, inner = max(2, ceil(size / 320)), max(1, ceil(size / 640))
+    np.testing.assert_array_equal(views["contour"][y, lo - outer], (23, 44, 60))
+    np.testing.assert_array_equal(views["contour"][y, lo - inner], (255, 210, 0))
+    np.testing.assert_array_equal(views["contour"][y, lo - outer - 1], background)
+    np.testing.assert_array_equal(views["contour"][y, y], background)
+    np.testing.assert_array_equal(values, before)
+    np.testing.assert_array_equal(views["mask"], (before > 0.5).astype(np.uint8) * 255)
+
+
+def test_prediction_numbers_sort_numerically_without_rounding():
+    import pandas as pd
+
+    rows = pd.DataFrame(
+        {
+            "path": ["a.png", "b.png", "c.png"],
+            "defect": ["good"] * 3,
+            "label": [0] * 3,
+            "binary_prediction": [0] * 3,
+            "decision": ["ACCEPT"] * 3,
+            **{
+                key: [8.04, 19.77, 9.10]
+                for key in (
+                    "score",
+                    "latency_ms",
+                    "preprocessing_ms",
+                    "inference_ms",
+                    "postprocessing_ms",
+                )
+            },
+        }
+    )
+    before = rows.copy(deep=True)
+    display = prediction_table(rows)
+    for name in (
+        "Оценка аномальности",
+        "Обработка, мс",
+        "Подготовка, мс",
+        "Модель, мс",
+        "Решение, мс",
+    ):
+        assert pd.api.types.is_numeric_dtype(display[name])
+        assert display.sort_values(name)[name].tolist() == [8.04, 9.10, 19.77]
+    pd.testing.assert_frame_equal(rows, before)
 
 
 def test_presentation_does_not_mutate_artifact_rows(ui_project):

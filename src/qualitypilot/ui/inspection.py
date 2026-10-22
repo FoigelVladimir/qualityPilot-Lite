@@ -2,10 +2,11 @@
 
 import warnings
 from io import BytesIO
+from math import ceil
 
 import matplotlib
 import numpy as np
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageFilter, UnidentifiedImageError
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_PIXELS = 20_000_000
@@ -48,15 +49,22 @@ def map_views(image: Image.Image, values: np.ndarray, threshold: float, alpha: f
     original = np.asarray(image, dtype=np.float32)
     overlay = ((1 - alpha) * original + alpha * heatmap).clip(0, 255).astype(np.uint8)
     # A display contour from the exact same thresholded mask, including image borders.
-    # No smoothing, dilation, component removal or change to the predicted mask.
+    # The predicted mask and boundary stay exact; only their display stroke is expanded.
     selected = values > threshold
     padded = np.pad(selected, 1, constant_values=False)
     interior = (
         selected & padded[:-2, 1:-1] & padded[2:, 1:-1] & padded[1:-1, :-2] & padded[1:-1, 2:]
     )
     boundary = selected & ~interior
+    stroke = Image.fromarray(boundary.astype(np.uint8) * 255)
+    short_side = min(image.size)
+    outer_radius = max(2, ceil(short_side / 320))
+    inner_radius = max(1, ceil(short_side / 640))
+    outer = np.asarray(stroke.filter(ImageFilter.MaxFilter(2 * outer_radius + 1))) > 0
+    inner = np.asarray(stroke.filter(ImageFilter.MaxFilter(2 * inner_radius + 1))) > 0
     contour = np.asarray(image).copy()
-    contour[boundary] = (255, 210, 0)
+    contour[outer] = (23, 44, 60)
+    contour[inner] = (255, 210, 0)
     strip = (
         (matplotlib.colormaps["inferno"](np.linspace(0, 1, 512))[None, :, :3] * 255)
         .astype(np.uint8)

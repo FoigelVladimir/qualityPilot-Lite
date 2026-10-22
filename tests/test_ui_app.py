@@ -178,6 +178,11 @@ def test_russian_labels_keep_internal_values_and_reports(ui_project):
     at.radio(key="page").set_value("Результаты эксперимента").run()
     assert not at.exception and not at.error
     assert "Базовая модель" in at.dataframe[0].value.columns
+    predictions = at.dataframe[1]
+    for name in ("Оценка аномальности", "Обработка, мс"):
+        assert pd.api.types.is_numeric_dtype(predictions.value[name])
+        options = json.loads(predictions.proto.columns)[name]
+        assert options["type_config"] == {"type": "number", "format": "%.2f"}
     assert "Прогноз: дефект" in at.table[0].value.columns
     assert any("FN — дефект пропущен" == item for item in at.selectbox(key="case").options)
     at.selectbox(key="case").select("FN").run()
