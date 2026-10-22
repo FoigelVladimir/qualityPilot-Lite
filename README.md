@@ -83,7 +83,7 @@ uv run --no-sync python -m streamlit run app.py
 ## Как устроено
 
 ```mermaid
-flowchart LR
+flowchart TB
     D[Данные и manifest] --> T[Normal train]
     D --> C[Normal calibration]
     T --> B[Признаки + Isolation Forest]

@@ -122,7 +122,7 @@ UI использует `baseline_config`; при другом конфиге ba
 ## Архитектура и Python API
 
 ```mermaid
-flowchart LR
+flowchart TB
     D[Явный импорт bottle] --> P[Валидация и manifest]
     P --> T[167 normal train]
     P --> C[42 normal calibration]
