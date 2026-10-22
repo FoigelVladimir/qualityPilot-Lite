@@ -47,6 +47,16 @@ def map_views(image: Image.Image, values: np.ndarray, threshold: float, alpha: f
     ).astype(np.uint8)
     original = np.asarray(image, dtype=np.float32)
     overlay = ((1 - alpha) * original + alpha * heatmap).clip(0, 255).astype(np.uint8)
+    # A display contour from the exact same thresholded mask, including image borders.
+    # No smoothing, dilation, component removal or change to the predicted mask.
+    selected = values > threshold
+    padded = np.pad(selected, 1, constant_values=False)
+    interior = (
+        selected & padded[:-2, 1:-1] & padded[2:, 1:-1] & padded[1:-1, :-2] & padded[1:-1, 2:]
+    )
+    boundary = selected & ~interior
+    contour = np.asarray(image).copy()
+    contour[boundary] = (255, 210, 0)
     strip = (
         (matplotlib.colormaps["inferno"](np.linspace(0, 1, 512))[None, :, :3] * 255)
         .astype(np.uint8)
@@ -55,7 +65,9 @@ def map_views(image: Image.Image, values: np.ndarray, threshold: float, alpha: f
     return {
         "heatmap": heatmap,
         "overlay": overlay,
-        "mask": (values > threshold).astype(np.uint8) * 255,
+        "mask": selected.astype(np.uint8) * 255,
+        "contour": contour,
+        "boundary": boundary,
         "legend": strip,
         "maximum": maximum,
     }

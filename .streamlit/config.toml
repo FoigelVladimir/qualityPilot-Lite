@@ -8,8 +8,16 @@ fileWatcherType = "none"
 gatherUsageStats = false
 
 [theme]
+base = "light"
 primaryColor = "#147d73"
 backgroundColor = "#f7f9fb"
 secondaryBackgroundColor = "#edf2f5"
 textColor = "#172c3c"
 font = "sans serif"
+baseFontSize = 16
+headingFontSizes = ["2rem", "1.5rem", "1.25rem", "1.1rem", "1rem", "1rem"]
+linkColor = "#12625b"
+greenTextColor = "#12543a"
+blueTextColor = "#153e5e"
+yellowTextColor = "#624600"
+redTextColor = "#8a1c26"

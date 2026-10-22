@@ -10,6 +10,7 @@ import yaml
 
 from qualitypilot.data.pipeline import Sample, assert_no_leakage
 from qualitypilot.ui import validation
+from qualitypilot.ui.presentation import REASONS
 
 REQUIRED = (
     "status.json",
@@ -221,17 +222,17 @@ def safe_data_path(root: Path, relative: str) -> Path:
 
 def metric_table(metrics: dict) -> pd.DataFrame:
     names = {
-        "image_auroc": "Image AUROC",
-        "image_average_precision": "Average Precision",
-        "precision": "Precision",
-        "recall": "Recall",
-        "f1": "F1",
-        "false_positive_rate": "False positive rate",
-        "median": "Median latency, ms",
-        "p95": "p95 latency, ms",
-        "pixel_auroc": "Pixel AUROC",
-        "dice": "Micro Dice",
-        "iou": "Micro IoU",
+        "image_auroc": "Различение снимков (Image AUROC)",
+        "image_average_precision": "Средняя точность (AP)",
+        "precision": "Точность тревог (Precision)",
+        "recall": "Полнота обнаружения (Recall)",
+        "f1": "Баланс точности и полноты (F1)",
+        "false_positive_rate": "Доля ложных тревог (FPR)",
+        "median": "Медианное время, мс",
+        "p95": "95-й процентиль времени, мс (p95)",
+        "pixel_auroc": "Различение пикселей (Pixel AUROC)",
+        "dice": "Совпадение областей (Dice)",
+        "iou": "Пересечение областей (IoU)",
     }
     rows = []
     for key, label in names.items():
@@ -243,9 +244,7 @@ def metric_table(metrics: dict) -> pd.DataFrame:
                 item = {"value": data["latency_ms"][key]}
             else:
                 item = data[key]
-            reason = item.get("reason", "недоступно")
-            if reason == "Global baseline has no anomaly map":
-                reason = "нет карты дефектов"
+            reason = REASONS.get(item.get("reason"), "причина в технических подробностях")
             row[model] = f"{item['value']:.6f}" if item["value"] is not None else f"N/A — {reason}"
         rows.append(row)
     return pd.DataFrame(rows)

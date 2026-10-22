@@ -9,6 +9,14 @@ from PIL import Image
 from qualitypilot.decision.policy import Thresholds
 from qualitypilot.ui.artifacts import discover_runs, load_reports, load_settings
 from qualitypilot.ui.inspection import decode_upload, map_views
+from qualitypilot.ui.presentation import (
+    CASES,
+    DECISIONS,
+    DEFECT_NAMES,
+    VIEWS,
+    prediction_table,
+    run_label,
+)
 from qualitypilot.ui.state import experimental_decision, reset_thresholds, sync_image, sync_model
 
 
@@ -109,3 +117,56 @@ def test_session_reset_does_not_keep_stale_result():
     assert "_prediction" not in state
     reset_thresholds(state)
     assert not state["experimental"]
+
+
+@pytest.mark.parametrize("kind", ["empty", "full", "mixed"])
+def test_contour_is_boundary_of_unchanged_mask(kind):
+    image = Image.new("RGB", (6, 5), (40, 50, 60))
+    values = np.zeros((5, 6), dtype=np.float32)
+    if kind == "full":
+        values[:] = 1
+    elif kind == "mixed":
+        values[1:4, 1:5] = 1
+        values[2, 2] = 0
+    original = values.copy()
+    views = map_views(image, values, 0.5, 0.4)
+    mask = values > 0.5
+    expected = np.zeros_like(mask)
+    for y, x in np.ndindex(mask.shape):
+        if mask[y, x]:
+            expected[y, x] = any(
+                yy < 0 or xx < 0 or yy >= 5 or xx >= 6 or not mask[yy, xx]
+                for yy, xx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1))
+            )
+    np.testing.assert_array_equal(views["boundary"], expected)
+    np.testing.assert_array_equal(views["mask"], mask.astype(np.uint8) * 255)
+    np.testing.assert_array_equal(values, original)
+    np.testing.assert_array_equal(views["contour"][~expected], np.asarray(image)[~expected])
+    assert np.all(views["contour"][expected] == (255, 210, 0))
+    assert views["contour"].shape == (5, 6, 3) and views["maximum"] == 0.75
+
+
+def test_presentation_does_not_mutate_artifact_rows(ui_project):
+    import pandas as pd
+
+    _, run = ui_project
+    rows = load_reports(run)["tables"]["baseline"]
+    before = rows.copy(deep=True)
+    display = prediction_table(rows)
+    pd.testing.assert_frame_equal(rows, before)
+    assert "Оценка аномальности" in display and "score" not in display
+    assert set(display["Разметка"]) == {"Исправно", "Дефект"}
+    assert all(
+        value.endswith(("(ACCEPT)", "(REVIEW)", "(REJECT)")) for value in display["Рекомендация"]
+    )
+    assert set(DEFECT_NAMES) == {"good", "broken_large", "broken_small", "contamination"}
+    assert set(DECISIONS) == {"ACCEPT", "REVIEW", "REJECT"}
+    assert set(CASES) == {"TP", "FP", "FN", "TN"} and set(VIEWS) == {
+        "overlay",
+        "heatmap",
+        "contour",
+        "mask",
+    }
+    first = run.with_name("bottle-patchcore-20261021T103450Z-11111111")
+    second = run.with_name("bottle-patchcore-20261021T103450Z-22222222")
+    assert run_label(first) != run_label(second) and "21.10.2026" in run_label(first)

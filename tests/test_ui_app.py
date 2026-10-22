@@ -92,11 +92,14 @@ def test_baseline_state_changes_and_no_map(ui_project, monkeypatch):
     at.selectbox(key="model").select("Baseline").run()
     at.button(key="inspect").click().run()
     assert not at.exception and counts == {"load": 1, "predict": 1}
-    assert any("не поддерживает локализацию" in item.value for item in at.info)
+    assert any("не выделяет области" in item.value for item in at.info)
+    assert at.metric[0].label == "Оценка аномальности" and at.metric[0].value == "0,60"
     at.toggle(key="experimental").set_value(True).run()
     at.number_input(key="manual_accept").set_value(0.7).run()
     assert counts == {"load": 1, "predict": 1}
-    assert at.metric[-1].value == "ACCEPT"
+    assert any("Рекомендуется принять" in item.value for item in at.success)
+    assert any("Код рекомендации: ACCEPT" in item.value for item in at.caption)
+    assert at.session_state["_prediction"].decision == "REVIEW"
     at.button(key="reset_thresholds").click().run()
     assert not at.toggle(key="experimental").value
     at.selectbox(key="example").select_index(1).run()
@@ -109,7 +112,7 @@ def test_baseline_state_changes_and_no_map(ui_project, monkeypatch):
 
 def test_patchcore_alpha_and_thresholds_do_not_infer(ui_project, monkeypatch):
     root, _ = ui_project
-    counts = {"predict": 0}
+    counts = {"load": 0, "predict": 0}
     from qualitypilot.ui.state import Inspector
 
     class Fake:
@@ -130,19 +133,138 @@ def test_patchcore_alpha_and_thresholds_do_not_infer(ui_project, monkeypatch):
                 pixel_threshold=0.65,
             )
 
-    monkeypatch.setattr(Inspector, "load", lambda *a, **k: Fake())
+    def load(*args, **kwargs):
+        counts["load"] += 1
+        return Fake()
+
+    monkeypatch.setattr(Inspector, "load", load)
     at = AppTest.from_function(launch, args=(str(root),)).run()
     at.button(key="inspect").click().run()
     assert not at.exception and counts["predict"] == 1
     original = at.session_state["_prediction"].anomaly_map.copy()
+    prediction = at.session_state["_prediction"]
+    inspector = at.session_state["_inspector"]
+    assert at.selectbox(key="view_mode").value == "overlay"
+    for mode in ("heatmap", "contour", "mask", "overlay"):
+        at.selectbox(key="view_mode").select(mode).run()
+        assert not at.exception and at.session_state["_prediction"] is prediction
+        assert at.session_state["_inspector"] is inspector
+        assert prediction.score == 0.6 and prediction.decision == "REVIEW"
+        np.testing.assert_array_equal(prediction.anomaly_map, original)
+    at.toggle(key="large_view").set_value(True).run()
+    at.selectbox(key="large_target").select("original").run()
+    at.selectbox(key="large_target").select("result").run()
+    at.toggle(key="large_view").set_value(False).run()
     at.slider(key="alpha").set_value(0.8).run()
     at.toggle(key="experimental").set_value(True).run()
     at.number_input(key="manual_accept").set_value(0.9).run()
     assert not at.exception and at.error  # accept > reject is rejected, not used.
-    assert counts["predict"] == 1
+    assert counts == {"load": 1, "predict": 1}
     assert np.array_equal(original, at.session_state["_prediction"].anomaly_map)
     at.selectbox(key="device").select("cuda").run()
     assert "_prediction" not in at.session_state and not at.session_state["experimental"]
+
+
+def test_russian_labels_keep_internal_values_and_reports(ui_project):
+    root, run = ui_project
+    at = AppTest.from_function(launch, args=(str(root),)).run()
+    assert not at.exception
+    assert at.sidebar.selectbox(key="model").value == "PatchCore"
+    assert at.sidebar.selectbox(key="device").value == "auto"
+    assert at.sidebar.selectbox(key="run").value == run
+    assert at.selectbox(key="example_type").value == "good"
+    assert "Исправная бутылка" in at.selectbox(key="example_type").options
+    assert at.selectbox(key="example").options[0] == "000.png"
+    at.radio(key="page").set_value("Результаты эксперимента").run()
+    assert not at.exception and not at.error
+    assert "Базовая модель" in at.dataframe[0].value.columns
+    assert "Прогноз: дефект" in at.table[0].value.columns
+    assert any("FN — дефект пропущен" == item for item in at.selectbox(key="case").options)
+    at.selectbox(key="case").select("FN").run()
+    assert at.selectbox(key="case").value == "FN"
+
+
+def test_run_change_and_navigation_reset_cached_state(ui_project, monkeypatch):
+    import shutil
+
+    root, run = ui_project
+    other = run.with_name("bottle-patchcore-second")
+    shutil.copytree(run, other)
+    from qualitypilot.ui.state import Inspector
+
+    counts = {"load": 0, "predict": 0}
+
+    class Fake:
+        model = SimpleNamespace(name="baseline", device="cpu")
+        thresholds = Thresholds(0.5, 0.8, 42)
+
+        def predict(self, image):
+            counts["predict"] += 1
+            return Prediction(0.6, "REVIEW", 1.0, model="baseline", original_size=image.size)
+
+    def load(*args, **kwargs):
+        counts["load"] += 1
+        return Fake()
+
+    monkeypatch.setattr(Inspector, "load", load)
+    at = AppTest.from_function(launch, args=(str(root),)).run()
+    at.selectbox(key="model").select("Baseline").run()
+    at.button(key="inspect").click().run()
+    at.toggle(key="experimental").set_value(True).run()
+    at.number_input(key="manual_accept").set_value(0.7).run()
+    pred = at.session_state["_prediction"]
+    at.radio(key="page").set_value("Результаты эксперимента").run()
+    assert not at.exception and counts == {"load": 1, "predict": 1}
+    at.radio(key="page").set_value("Проверка изображения").run()
+    assert at.session_state["_prediction"] is pred
+    at.selectbox(key="run").select(other).run()
+    assert not at.exception and "_prediction" not in at.session_state
+    assert "_inspector" not in at.session_state and not at.session_state["experimental"]
+    at.button(key="inspect").click().run()
+    assert counts == {"load": 2, "predict": 2}
+
+
+def test_optional_ground_truth_is_display_only(ui_project, monkeypatch):
+    root, _ = ui_project
+    from qualitypilot.ui.state import Inspector
+
+    counts = {"load": 0, "predict": 0}
+
+    class Fake:
+        model = SimpleNamespace(name="patchcore", device="cpu")
+        thresholds = Thresholds(0.5, 0.8, 42)
+
+        def predict(self, image):
+            counts["predict"] += 1
+            return Prediction(
+                0.6,
+                "REVIEW",
+                1.0,
+                np.zeros((image.height, image.width), np.float32),
+                "patchcore",
+                "bottle",
+                "cpu",
+                original_size=image.size,
+                pixel_threshold=0.65,
+            )
+
+    def load(*args, **kwargs):
+        counts["load"] += 1
+        return Fake()
+
+    monkeypatch.setattr(Inspector, "load", load)
+    at = AppTest.from_function(launch, args=(str(root),)).run()
+    at.selectbox(key="example_type").select("scratch").run()
+    assert not at.exception and not at.error
+    assert at.selectbox(key="example").value == "bottle/test/scratch/000.png"
+    at.button(key="inspect").click().run()
+    pred = at.session_state["_prediction"]
+    assert not at.toggle(key="show_gt").value
+    at.toggle(key="show_gt").set_value(True).run()
+    at.selectbox(key="view_mode").select("contour").run()
+    at.toggle(key="show_gt").set_value(False).run()
+    assert not at.exception and at.session_state["_prediction"] is pred
+    assert counts == {"load": 1, "predict": 1} and not pred.anomaly_map.any()
 
 
 def assert_report_error_keeps_navigation(root, filename, detail):
